@@ -1,3 +1,19 @@
+x-environment: &infrastructure-env
+  INFRA_CASSANDRA_HOST: 109.73.192.250:9042
+  INFRA_KAFKA_HOST: 109.73.192.250:29092
+  INFRA_POSTGRES_HOST: 109.73.192.250:5432
+  INFRA_EVENTSTORE_URL: http://109.73.192.250:2113
+  EVENTSTORE_USERNAME: admin
+  EVENTSTORE_PASSWORD: admin
+  INFRA_POSTGRES_USER: postgres
+  INFRA_POSTGRES_PASSWORD: postgres
+  INFRA_POSTGRES_DB: metachat
+  SERVICES_USER_SERVICE_ADDRESS: user-service:50051
+  SERVICES_DIARY_SERVICE_ADDRESS: diary-service:50052
+  SERVICES_MATCHING_SERVICE_ADDRESS: matching-service:50053
+  SERVICES_MATCH_REQUEST_SERVICE_ADDRESS: match-request-service:50054
+  SERVICES_CHAT_SERVICE_ADDRESS: chat-service:50055
+
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
@@ -215,7 +231,7 @@ services:
     restart: "no"
 
   cassandra:
-    image: cassandra:5
+    image: cassandra:4.1
     container_name: cassandra
     hostname: cassandra
     ports:
@@ -227,17 +243,10 @@ services:
       CASSANDRA_DC: "datacenter1"
       CASSANDRA_RACK: "rack1"
       CASSANDRA_ENDPOINT_SNITCH: "GossipingPropertyFileSnitch"
-      CASSANDRA_SEEDS: "cassandra"
       CASSANDRA_NUM_TOKENS: 16
-      CASSANDRA_LISTEN_ADDRESS: cassandra
-      CASSANDRA_BROADCAST_ADDRESS: cassandra
       CASSANDRA_RPC_ADDRESS: "0.0.0.0"
-      CASSANDRA_BROADCAST_RPC_ADDRESS: cassandra
       MAX_HEAP_SIZE: "512M"
-      JVM_OPTS: "-XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:InitiatingHeapOccupancyPercent=45 -XX:+ParallelRefProcEnabled -XX:+UseStringDeduplication"
-      CASSANDRA_CONCURRENT_READS: 4
-      CASSANDRA_CONCURRENT_WRITES: 4
-      CASSANDRA_CONCURRENT_COUNTER_WRITES: 4
+      HEAP_NEWSIZE: "128M"
     volumes:
       - cassandra_data:/var/lib/cassandra
       - ./cassandra-init.cql:/docker-entrypoint-initdb.d/cassandra-init.cql:ro
@@ -247,17 +256,17 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.3'
-          memory: 512M
+          cpus: '0.5'
+          memory: 1024M
         reservations:
-          cpus: '0.15'
-          memory: 256M
+          cpus: '0.25'
+          memory: 512M
     healthcheck:
-      test: ["CMD-SHELL", "nodetool status | grep -q 'UN' || exit 1"]
+      test: ["CMD-SHELL", "cqlsh -e 'describe cluster' || exit 1"]
       interval: 30s
-      timeout: 15s
+      timeout: 10s
       retries: 10
-      start_period: 180s
+      start_period: 120s
 
   cassandra-init:
     image: cassandra:4.1
@@ -338,9 +347,9 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: postgres
+      POSTGRES_USER: ${INFRA_POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${INFRA_POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${INFRA_POSTGRES_DB:-metachat}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     command:
       - "postgres"
