@@ -234,7 +234,6 @@ services:
       CASSANDRA_RPC_ADDRESS: "0.0.0.0"
       CASSANDRA_BROADCAST_RPC_ADDRESS: cassandra
       MAX_HEAP_SIZE: "512M"
-      HEAP_NEWSIZE: "128M"
       JVM_OPTS: "-XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:InitiatingHeapOccupancyPercent=45 -XX:+ParallelRefProcEnabled -XX:+UseStringDeduplication"
       CASSANDRA_CONCURRENT_READS: 4
       CASSANDRA_CONCURRENT_WRITES: 4
