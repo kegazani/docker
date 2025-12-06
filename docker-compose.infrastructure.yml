@@ -235,14 +235,15 @@ services:
       CASSANDRA_BROADCAST_RPC_ADDRESS: cassandra
       MAX_HEAP_SIZE: "512M"
       HEAP_NEWSIZE: "128M"
+      JVM_OPTS: "-XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:InitiatingHeapOccupancyPercent=45 -XX:+ParallelRefProcEnabled -XX:-UseConcMarkSweepGC -XX:-CMSParallelRemarkEnabled -XX:-CMSParallelInitialMarkEnabled"
       CASSANDRA_CONCURRENT_READS: 4
       CASSANDRA_CONCURRENT_WRITES: 4
       CASSANDRA_CONCURRENT_COUNTER_WRITES: 4
-    entrypoint: ["/bin/bash", "/docker-entrypoint-custom.sh"]
     volumes:
       - cassandra_data:/var/lib/cassandra
       - ./cassandra-init.cql:/docker-entrypoint-initdb.d/cassandra-init.cql:ro
-      - ./cassandra-entrypoint.sh:/docker-entrypoint-custom.sh:ro
+      - ./cassandra-entrypoint.sh:/docker-entrypoint-custom.sh
+    entrypoint: ["/bin/bash", "/docker-entrypoint-custom.sh"]
     networks:
       - metachat_network
     restart: unless-stopped
