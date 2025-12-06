@@ -112,6 +112,14 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
     entrypoint: ["/bin/bash", "-c"]
     command:
       - |
@@ -131,9 +139,9 @@ services:
         
         create_topic() {
           local topic_name="$$1"
-          local partitions="$${2:-3}"
+          local partitions="$${2:-1}"
           local replication_factor="$${3:-1}"
-          local retention_ms="$${4:-604800000}"
+          local retention_ms="$${4:-86400000}"
           local cleanup_policy="$${5:-delete}"
           
           echo "📝 Creating topic: $$topic_name"
@@ -211,29 +219,39 @@ services:
     container_name: cassandra
     hostname: cassandra
     ports:
-      - "9042:9042"     # CQL порт - доступен снаружи
-      - "7000:7000"     # Inter-node communication
-      - "7001:7001"     # TLS inter-node communication
+      - "9042:9042"
+      - "7000:7000"
+      - "7001:7001"
     environment:
       CASSANDRA_CLUSTER_NAME: "metachat-cluster"
       CASSANDRA_DC: "datacenter1"
       CASSANDRA_RACK: "rack1"
       CASSANDRA_ENDPOINT_SNITCH: "GossipingPropertyFileSnitch"
       CASSANDRA_SEEDS: "cassandra"
-      CASSANDRA_NUM_TOKENS: 256
+      CASSANDRA_NUM_TOKENS: 16
       CASSANDRA_LISTEN_ADDRESS: cassandra
       CASSANDRA_BROADCAST_ADDRESS: cassandra
-      # RPC слушает на всех интерфейсах для внешнего доступа
       CASSANDRA_RPC_ADDRESS: "0.0.0.0"
       CASSANDRA_BROADCAST_RPC_ADDRESS: cassandra
-      MAX_HEAP_SIZE: "1G"
-      HEAP_NEWSIZE: "200M"
+      MAX_HEAP_SIZE: "512M"
+      HEAP_NEWSIZE: "128M"
+      CASSANDRA_CONCURRENT_READS: 4
+      CASSANDRA_CONCURRENT_WRITES: 4
+      CASSANDRA_CONCURRENT_COUNTER_WRITES: 4
     volumes:
       - cassandra_data:/var/lib/cassandra
       - ./cassandra-init.cql:/docker-entrypoint-initdb.d/cassandra-init.cql:ro
     networks:
       - metachat_network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 512M
+        reservations:
+          cpus: '0.15'
+          memory: 256M
     healthcheck:
       test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
       interval: 30s
@@ -248,6 +266,14 @@ services:
     depends_on:
       cassandra:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
     entrypoint: ["/bin/bash", "-c"]
     command:
       - |
@@ -281,15 +307,23 @@ services:
     container_name: nats
     hostname: nats
     ports:
-      - "4222:4222"     # Client connections - доступен снаружи
-      - "8222:8222"     # HTTP monitoring - доступен снаружи
-      - "6222:6222"     # Cluster routes
-    command: ["-js", "-m", "8222"]
+      - "4222:4222"
+      - "8222:8222"
+      - "6222:6222"
+    command: ["-js", "-m", "8222", "-sd", "/data", "--store_dir", "/data/jetstream"]
     volumes:
       - nats_data:/data
     networks:
       - metachat_network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
       interval: 30s
@@ -307,12 +341,47 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=128MB"
+      - "-c"
+      - "effective_cache_size=256MB"
+      - "-c"
+      - "maintenance_work_mem=32MB"
+      - "-c"
+      - "checkpoint_completion_target=0.9"
+      - "-c"
+      - "wal_buffers=16MB"
+      - "-c"
+      - "default_statistics_target=100"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "effective_io_concurrency=200"
+      - "-c"
+      - "work_mem=4MB"
+      - "-c"
+      - "min_wal_size=1GB"
+      - "-c"
+      - "max_wal_size=2GB"
+      - "-c"
+      - "max_connections=50"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres-init.sql:/docker-entrypoint-initdb.d/postgres-init.sql:ro
     networks:
       - metachat_network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -337,11 +406,20 @@ services:
       EVENTSTORE_HTTP_PORT: 2113
       EVENTSTORE_ADVERTISE_HTTP_PORT_TO_CLIENT_AS: 2113
       EVENTSTORE_ADVERTISE_TCP_PORT_TO_CLIENT_AS: 1113
+      EVENTSTORE_MEM_DB: "false"
     volumes:
       - eventstore_data:/var/lib/eventstore
     networks:
       - metachat_network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.3'
+          memory: 512M
+        reservations:
+          cpus: '0.15'
+          memory: 256M
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:2113/health/live"]
       interval: 30s
@@ -349,40 +427,50 @@ services:
       retries: 5
       start_period: 60s
 
-  # Optional: Prometheus для мониторинга
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
     hostname: prometheus
     ports:
-      - "9090:9090"     # Web UI - доступен снаружи
+      - "9090:9090"
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/etc/prometheus/console_libraries'
       - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'
+      - '--storage.tsdb.retention.time=24h'
+      - '--storage.tsdb.retention.size=2GB'
       - '--web.enable-lifecycle'
+      - '--storage.tsdb.wal-compression'
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     networks:
       - metachat_network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
     profiles:
       - monitoring
 
-  # Optional: Grafana для визуализации
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
     hostname: grafana
     ports:
-      - "3000:3000"     # Web UI - доступен снаружи
+      - "3000:3000"
     environment:
       GF_SECURITY_ADMIN_USER: "admin"
       GF_SECURITY_ADMIN_PASSWORD: "admin"
       GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_INSTALL_PLUGINS: ""
+      GF_PATHS_DATA: /var/lib/grafana
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
@@ -390,6 +478,14 @@ services:
     networks:
       - metachat_network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.15'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
     profiles:
       - monitoring
     depends_on:
@@ -401,13 +497,23 @@ services:
     hostname: loki
     ports:
       - "3100:3100"
-    command: -config.file=/etc/loki/local-config.yaml
+    command: 
+      - -config.file=/etc/loki/local-config.yaml
+      - -storage.tsdb.retention-period=24h
     volumes:
       - ./monitoring/loki-config.yaml:/etc/loki/local-config.yaml:ro
       - loki_data:/loki
     networks:
       - metachat_network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.15'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
     profiles:
       - monitoring
 
@@ -423,6 +529,14 @@ services:
     networks:
       - metachat_network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64M
+        reservations:
+          cpus: '0.05'
+          memory: 32M
     profiles:
       - monitoring
     depends_on:
