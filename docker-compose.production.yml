@@ -1,0 +1,268 @@
+# Production docker-compose с образами из registry
+# Использование: docker-compose -f docker-compose.production.yml up -d
+
+version: '3.8'
+
+services:
+  api-gateway:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-username/metachat}-api-gateway:${TAG:-latest}
+    hostname: api-gateway
+    depends_on:
+      - user-service
+      - diary-service
+      - matching-service
+      - match-request-service
+      - chat-service
+    environment:
+      - SERVICES_USER_SERVICE_ADDRESS=user-service:50051
+      - SERVICES_DIARY_SERVICE_ADDRESS=diary-service:50052
+      - SERVICES_MATCHING_SERVICE_ADDRESS=matching-service:50053
+      - SERVICES_MATCH_REQUEST_SERVICE_ADDRESS=match-request-service:50054
+      - SERVICES_CHAT_SERVICE_ADDRESS=chat-service:50055
+      - SERVER_PORT=8080
+    ports:
+      - "8080:8080"
+    networks:
+      - metachat_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  user-service:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-username/metachat}-user-service:${TAG:-latest}
+    hostname: user-service
+    environment:
+      - CASSANDRA_HOSTS=cassandra:9042
+      - CASSANDRA_KEYSPACE=metachat
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - EVENT_STORE_TYPE=eventstoredb
+      - EVENT_STORE_URL=http://eventstore:2113
+      - EVENT_STORE_USERNAME=admin
+      - EVENT_STORE_PASSWORD=changeit
+      - SERVER_PORT=8080
+      - GRPC_PORT=50051
+    ports:
+      - "50051:50051"
+    networks:
+      - metachat_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  diary-service:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-username/metachat}-diary-service:${TAG:-latest}
+    hostname: diary-service
+    environment:
+      - CASSANDRA_HOSTS=cassandra:9042
+      - CASSANDRA_KEYSPACE=metachat
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_DIARY_EVENTS_TOPIC=diary-events
+      - EVENT_STORE_TYPE=eventstoredb
+      - EVENT_STORE_URL=http://eventstore:2113
+      - EVENT_STORE_USERNAME=admin
+      - EVENT_STORE_PASSWORD=changeit
+      - SERVER_PORT=8080
+      - GRPC_PORT=50052
+    ports:
+      - "50052:50052"
+    networks:
+      - metachat_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  matching-service:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-username/metachat}-matching-service:${TAG:-latest}
+    hostname: matching-service
+    environment:
+      - CASSANDRA_HOSTS=cassandra:9042
+      - CASSANDRA_KEYSPACE=metachat
+      - SERVER_PORT=8080
+      - GRPC_PORT=50053
+    ports:
+      - "50053:50053"
+    networks:
+      - metachat_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  match-request-service:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-username/metachat}-match-request-service:${TAG:-latest}
+    hostname: match-request-service
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=metachat
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - SERVER_PORT=8080
+      - GRPC_PORT=50054
+    ports:
+      - "50054:50054"
+    networks:
+      - metachat_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  chat-service:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-username/metachat}-chat-service:${TAG:-latest}
+    hostname: chat-service
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=metachat
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - SERVER_PORT=8080
+      - GRPC_PORT=50055
+    ports:
+      - "50055:50055"
+    networks:
+      - metachat_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  mood-analysis-service:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-username/metachat}-mood-analysis-service:${TAG:-latest}
+    hostname: mood-analysis-service
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=metachat
+    ports:
+      - "8000:8000"
+      - "50056:50056"
+    networks:
+      - metachat_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  analytics-service:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-username/metachat}-analytics-service:${TAG:-latest}
+    hostname: analytics-service
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=metachat
+    ports:
+      - "8001:8000"
+    networks:
+      - metachat_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  archetype-service:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-username/metachat}-archetype-service:${TAG:-latest}
+    hostname: archetype-service
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=metachat
+    ports:
+      - "8002:8000"
+    networks:
+      - metachat_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  biometric-service:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-username/metachat}-biometric-service:${TAG:-latest}
+    hostname: biometric-service
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=metachat
+    ports:
+      - "8003:8000"
+    networks:
+      - metachat_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  correlation-service:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_PREFIX:-username/metachat}-correlation-service:${TAG:-latest}
+    hostname: correlation-service
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=metachat
+    ports:
+      - "8004:8000"
+    networks:
+      - metachat_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  metachat_network:
+    external: true
+
